@@ -2,7 +2,12 @@
 name = "Rust-Loadbalancer"
 version = "0.1.0"
 edition = "2021"
+authors = ["Caaams"]
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+clap = { version = "4.5.0", features = ["derive"] }
+regex = "1.5"
+log = { version = "0.4", features = ["max_level_debug", "release_max_level_warn"] }
