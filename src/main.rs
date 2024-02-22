@@ -2,6 +2,9 @@ use clap::Parser;
 use log::{error}; // Import the `error` and `info` macros from the `log` crate
 use std::net::{TcpListener, TcpStream};
 
+use std::io::{Read, Write};
+use rand::seq::SliceRandom;
+
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -39,6 +42,68 @@ struct ProxyState {
 }
 
 
+
+fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
+    // Select a random upstream server
+    let mut rng = rand::thread_rng();
+    let upstream_address = state.upstream_addresses.choose(&mut rng).unwrap();
+
+    // Connect to the selected upstream server
+    let mut upstream_stream = match TcpStream::connect(upstream_address) {
+        Ok(stream) => stream,
+        Err(_) => {
+            // If unable to connect to the upstream server, inform the client with a 502 Bad Gateway error
+            let response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
+            client_stream.write(response.as_bytes()).unwrap();
+            return;
+        }
+    };
+
+    // Begin looping to read requests from the client
+    loop {
+        let mut buffer = [0; 1024];
+        let bytes_read = match client_stream.read(&mut buffer) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                // Error handling in case the client sends a malformed request
+                let response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+                client_stream.write(response.as_bytes()).unwrap();
+                return;
+            }
+        };
+
+        // If no bytes are read, the client closed the connection
+        if bytes_read == 0 {
+            return;
+        }
+
+        // Add X-Forwarded-For header
+        let mut request = String::from("X-Forwarded-For: ");
+        request.push_str(&client_stream.peer_addr().unwrap().to_string());
+        request.push_str("\r\n");
+        request.push_str(&String::from_utf8_lossy(&buffer[..]));
+
+        // Relay the request to the upstream server
+        upstream_stream.write_all(request.as_bytes()).unwrap();
+
+        // Try to read the response from the upstream server
+        let mut upstream_response = String::new();
+        match upstream_stream.read_to_string(&mut upstream_response) {
+            Ok(_) => (),
+            Err(_) => {
+                // If there is an error in receiving the response, inform the client
+                let response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
+                client_stream.write(response.as_bytes()).unwrap();
+                return;
+            }
+        }
+
+        // Forward the response to the client
+        client_stream.write_all(upstream_response.as_bytes()).unwrap();
+        client_stream.flush().unwrap();
+    }
+}
+
 fn main() {
     // Parse the command line arguments passed to this program
     let options = CmdOptions::parse();
@@ -57,12 +122,22 @@ fn main() {
     };
     log::info!("Listening for requests on {}", options.upstream);
 
-    /*
+    // Initialize the proxy state
+    let state = ProxyState {
+        active_health_check_interval: 0, // Initialize with appropriate values
+        active_health_check_path: String::new(), // Initialize with appropriate values
+        rate_limit_window_size: 0, // Initialize with appropriate values
+        max_requests_per_window: 0, // Initialize with appropriate values
+        upstream_addresses: vec!["127.0.0.1:8080".to_string()], // Example addresses, replace with your logic
+    };
+    
+
+    
     for stream in listener.incoming() {
         let stream = stream.unwrap();
         // Handle the connection!
         handle_connection(stream, &state);
     }
-     */
+     
 
 }
