@@ -1,5 +1,5 @@
 [package]
-name = "Rust-Loadbalancer"
+name = "rust_loadbalancer"
 version = "0.1.0"
 edition = "2021"
 authors = ["Caaams"]
