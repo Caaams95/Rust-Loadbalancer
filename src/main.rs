@@ -1,4 +1,5 @@
-use clap::Parser;
+// use std::env::Args;
+use clap::{arg, Parser};
 use log::{error}; // Import the `error` and `info` macros from the `log` crate
 use std::net::{TcpListener, TcpStream};
 
@@ -11,19 +12,18 @@ use rand::seq::SliceRandom;
 #[command(version, about, long_about = None)]
 struct CmdOptions {
     /// Name of the person to greet
-    #[arg(short, long)]
-    upstream: String,
+    #[arg(short, long, long_help="Upstream server(s) to proxy to")]
+    upstream: Vec<String>,
 
+    #[arg(short, long, long_help="Bind to this address", default_value="0.0.0.0:8080")]
+    bind: String,
 
     /// Number of times to greet
     #[arg(short, long, default_value_t = 1)]
     count: u8,
 }
 
-/// Contains information about the state of balancebeam (e.g. what servers we are currently proxying
-/// to, what servers have failed, rate limiting counts, etc.)
-///
-/// You should add fields to this struct in later milestones.
+
 struct ProxyState {
     /// How frequently we check whether upstream servers are alive (Milestone 2)
     #[allow(dead_code)]
@@ -47,6 +47,7 @@ fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
     // Select a random upstream server
     let mut rng = rand::thread_rng();
     let upstream_address = state.upstream_addresses.choose(&mut rng).unwrap();
+
 
     // Connect to the selected upstream server
     let mut upstream_stream = match TcpStream::connect(upstream_address) {
@@ -74,6 +75,7 @@ fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
 
         // If no bytes are read, the client closed the connection
         if bytes_read == 0 {
+            log::info!("Client closed the connection");
             return;
         }
 
@@ -82,6 +84,8 @@ fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
         request.push_str(&client_stream.peer_addr().unwrap().to_string());
         request.push_str("\r\n");
         request.push_str(&String::from_utf8_lossy(&buffer[..]));
+
+        println!("Request: {}", request);
 
         // Relay the request to the upstream server
         upstream_stream.write_all(request.as_bytes()).unwrap();
@@ -106,21 +110,30 @@ fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
 
 fn main() {
     // Parse the command line arguments passed to this program
-    let options = CmdOptions::parse();
-    if options.upstream.len() < 1 {
+    let args = CmdOptions::parse();
+
+    if args.upstream.len() < 1 {
         error!("At least one upstream server must be specified using the --upstream option.");
         std::process::exit(1);
     }
 
+    // let count = args.count;
+    // let upstream = args.upstream;
+    //
+    // println!("Upstream: {}", upstream);
+    // println!("Count: {}", count);
+
+
     // Creates a server socket so that it can begin listening for connections:
-    let listener = match TcpListener::bind(&options.upstream) {
+    let listener = match TcpListener::bind(&args.bind) {
         Ok(listener) => listener,
         Err(err) => {
-            log::error!("Could not bind to {}: {}", options.upstream, err);
+            log::error!("Could not bind to {:?}: {}", args.bind, err);
             std::process::exit(1);
         }
     };
-    log::info!("Listening for requests on {}", options.upstream);
+
+    println!("Listening for requests on {:?}", listener);
 
     // Initialize the proxy state
     let state = ProxyState {
@@ -128,15 +141,16 @@ fn main() {
         active_health_check_path: String::new(), // Initialize with appropriate values
         rate_limit_window_size: 0, // Initialize with appropriate values
         max_requests_per_window: 0, // Initialize with appropriate values
-        upstream_addresses: vec!["127.0.0.1:8080".to_string()], // Example addresses, replace with your logic
+        upstream_addresses: args.upstream, // Example addresses, replace with your logic
     };
     
 
-    
     for stream in listener.incoming() {
-        let stream = stream.unwrap();
-        // Handle the connection!
-        handle_connection(stream, &state);
+        println!("New connection: {:?}", stream);
+        if let Ok(stream) = stream {
+            // Handle the connection!
+            handle_connection(stream, &state);
+        }
     }
      
 
