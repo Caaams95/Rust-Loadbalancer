@@ -1,10 +1,14 @@
+mod request;
+
 // use std::env::Args;
 use clap::{arg, Parser};
 use log::{error}; // Import the `error` and `info` macros from the `log` crate
 use std::net::{TcpListener, TcpStream};
 
 use std::io::{Read, Write};
+use http::Request;
 use rand::seq::SliceRandom;
+use crate::request::Error;
 
 
 /// Simple program to greet a person
@@ -42,15 +46,18 @@ struct ProxyState {
 }
 
 
-
 fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
     // Select a random upstream server
     let mut rng = rand::thread_rng();
     let upstream_address = state.upstream_addresses.choose(&mut rng).unwrap();
 
+    // get the client's IP address
+    let client_ip = client_stream.peer_addr().unwrap().to_string();
+
 
     // Connect to the selected upstream server
     let mut upstream_stream = match TcpStream::connect(upstream_address) {
+
         Ok(stream) => stream,
         Err(_) => {
             // If unable to connect to the upstream server, inform the client with a 502 Bad Gateway error
@@ -62,33 +69,55 @@ fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
 
     // Begin looping to read requests from the client
     loop {
-        let mut buffer = [0; 1024];
-        let bytes_read = match client_stream.read(&mut buffer) {
-            Ok(bytes) => bytes,
-            Err(_) => {
-                // Error handling in case the client sends a malformed request
-                let response = "HTTP/1.1 400 Bad Request\r\n\r\n";
-                client_stream.write(response.as_bytes()).unwrap();
-                return;
-            }
+
+        // let mut buffer = [0; 1024];
+        // let bytes_read = match client_stream.read(&mut buffer) {
+        //     Ok(bytes) => bytes,
+        //     Err(_) => {
+        //         // Error handling in case the client sends a malformed request
+        //         let response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+        //         client_stream.write(response.as_bytes()).unwrap();
+        //         return;
+        //     }
+        // };
+
+        // Read a request from the client
+        let mut request = match request::read_from_stream(&mut client_stream) {
+            Ok(request) => request,
+            // Handle case where client closed connection and is no longer sending requests
+            _ => return,
         };
 
-        // If no bytes are read, the client closed the connection
-        if bytes_read == 0 {
-            log::info!("Client closed the connection");
-            return;
-        }
+        // // If no bytes are read, the client closed the connection
+        // if bytes_read == 0 {
+        //     log::info!("Client closed the connection");
+        //     return;
+        // }
 
-        // Add X-Forwarded-For header
-        let mut request = String::from("X-Forwarded-For: ");
-        request.push_str(&client_stream.peer_addr().unwrap().to_string());
-        request.push_str("\r\n");
-        request.push_str(&String::from_utf8_lossy(&buffer[..]));
+        // // Add X-Forwarded-For header
+        // let mut request = String::from("X-Forwarded-For: ");
+        // request.push_str(&client_stream.peer_addr().unwrap().to_string());
+        // request.push_str("\r\n");
+        // request.push_str(&String::from_utf8_lossy(&buffer[..]));
 
-        println!("Request: {}", request);
+        request::extend_header_value(&mut request, "x-forwarded-for", &client_ip);
 
-        // Relay the request to the upstream server
-        upstream_stream.write_all(request.as_bytes()).unwrap();
+        request::write_to_stream(&request, &mut upstream_stream).expect("TODO: panic message");
+        // Forward the request to the server
+        // if let Err(error) = request::write_to_stream(&request, &mut upstream_stream) {
+        //     log::error!("Failed to send request to upstream {}: {}", upstream_address, error);
+        //     let response = response::make_http_error(http::StatusCode::BAD_GATEWAY);
+        //     send_response(&mut client_conn, &response);
+        //     return;
+        // }
+
+
+        // println!("Request: {}", request);
+
+        // // Relay the request to the upstream server
+        // upstream_stream.write_all(request.as_bytes()).unwrap();
+        //
+        // println!("upstream_stream: {:?}", upstream_stream);
 
         // Try to read the response from the upstream server
         let mut upstream_response = String::new();
