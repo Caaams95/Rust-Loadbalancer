@@ -167,8 +167,12 @@ fn main() {
     }
 
     for handle in threads {
-        handle.join().expect("Panic occurred in thread!");
+    match handle.join() {
+        Ok(_) => (),
+        Err(err) => {
+            eprintln!("Error occurred in thread: {:?}", err);
+        }
     }
+}
      
-
 }
