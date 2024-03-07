@@ -81,7 +81,7 @@ fn read_client_request(client_stream: &mut TcpStream) -> Result<Request<Vec<u8>>
     // If no bytes are read, the client closed the connection
     if bytes_read == 0 {
         log::info!("Client closed the connection");
-        return Err(Error::ClientClosedConnection).expect("Client closed the connection.");
+        return Err(Error::ClientClosedConnection).expect("Client closed the connection. EXPECTED");
     }
 
     // read the request from the client

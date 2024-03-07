@@ -26,6 +26,7 @@ struct CmdOptions {
 }
 
 
+#[derive(Debug)]
 struct ProxyState {
     /// How frequently we check whether upstream servers are alive (Milestone 2)
     #[allow(dead_code)]
@@ -43,27 +44,65 @@ struct ProxyState {
     upstream_addresses: Vec<String>,
 }
 
-
-fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
-    // Select a random upstream server
+fn connect_to_upstream_server(mut upstream_address_list: Vec<String>) -> Result<TcpStream, std::io::Error> {
+    
     let mut rng = rand::thread_rng();
-    let upstream_address = state.upstream_addresses.choose(&mut rng).unwrap();
+    let upstream_address = upstream_address_list.choose(&mut rng).unwrap();
+    
+    println!("upstream_address: {:?}", upstream_address);
+    
+    match TcpStream::connect(upstream_address) {
+        Ok(stream) =>Ok(stream),
+        Err(e) => {
+            // check if the upstream_address_list is empty
+            if upstream_address_list.is_empty() {
+                Err(e)
+            }else { 
+                // remove the line  upstream_address in upstream_address_list
+                let index = upstream_address_list.iter().position(|x| x == upstream_address).unwrap();
+                let _ = upstream_address_list.remove(index);
+                
+                // connect to the next upstream server
+                connect_to_upstream_server(upstream_address_list)
+            }
+            
+        }
+    }
+}
 
-    // get the client's IP address - two var to prevent the borrow error in &str
-    let binding = client_stream.peer_addr().unwrap().to_string();
-    let client_ip = binding.as_str();
-
-    // Connect to the selected upstream server
-    let mut upstream_stream = match TcpStream::connect(upstream_address) {
-
+fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {    
+    
+    let mut upstream_address_list = state.upstream_addresses.clone();
+    
+    let mut upstream_stream = match connect_to_upstream_server(upstream_address_list.clone()) {
         Ok(stream) => stream,
         Err(_) => {
+            
             // If unable to connect to the upstream server, inform the client with a 502 Bad Gateway error
             let response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
             client_stream.write(response.as_bytes()).unwrap();
             return;
         }
     };
+
+    // get the client's IP address - two var to prevent the borrow error in &str
+    let binding = client_stream.peer_addr().unwrap().to_string();
+    let client_ip = binding.as_str();
+
+
+    // Connect to the selected upstream server
+    // let mut upstream_stream = match TcpStream::connect(upstream_address) {
+    //     Ok(stream) => stream,
+    //     Err(_) => {
+    //         // If unable to connect to the upstream server, inform the client with a 502 Bad Gateway error
+    //         let response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
+    //         client_stream.write(response.as_bytes()).unwrap();
+    //         return;
+    //     }
+    // };
+    
+    
+    
 
     // Begin looping to read requests from the client
     loop {
@@ -133,6 +172,8 @@ fn main() {
         max_requests_per_window: 0, // Initialize with appropriate values
         upstream_addresses: args.upstream, // Example addresses, replace with your logic
     };
+    
+    println!("state: {:?}", state);
     
 
     for stream in listener.incoming() {
