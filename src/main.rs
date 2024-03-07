@@ -60,64 +60,71 @@ impl Clone for ProxyState {
 }
 
 fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
-    // Select a random upstream server
-    let mut rng = rand::thread_rng();
-    let upstream_address = state.upstream_addresses.choose(&mut rng).unwrap();
+    for upstream_address in &state.upstream_addresses {
+        // Select a random upstream server
+        //let mut rng = rand::thread_rng();
+        //let upstream_address = state.upstream_addresses.choose(&mut rng).unwrap();
 
-    // get the client's IP address - two var to prevent the borrow error in &str
-    let binding = client_stream.peer_addr().unwrap().to_string();
-    let client_ip = binding.as_str();
+        // get the client's IP address - two var to prevent the borrow error in &str
+        let binding = client_stream.peer_addr().unwrap().to_string();
+        let client_ip = binding.as_str();
 
-    // Connect to the selected upstream server
-    let mut upstream_stream = match TcpStream::connect(upstream_address) {
+        // Connect to the selected upstream server
+        let mut upstream_stream = match TcpStream::connect(upstream_address) {
 
-        Ok(stream) => stream,
-        Err(_) => {
-            // If unable to connect to the upstream server, inform the client with a 502 Bad Gateway error
-            let response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
-            client_stream.write(response.as_bytes()).unwrap();
-            return;
-        }
-    };
-
-    // Begin looping to read requests from the client
-    loop {
-
-        // Read the request from the client and forward it to the upstream server using the request_controller function
-        request_controller(&mut client_stream, client_ip, &mut upstream_stream);
-
-        // Try to read the response from the upstream server into a string buffer (upstream_response) and handle any errors
-        // If there is an error in receiving the response, inform the client with a 502 Bad Gateway error and return
-        let mut upstream_response = String::new();
-        match upstream_stream.read_to_string(&mut upstream_response) {
-            Ok(_) => (),
+            Ok(stream) => stream,
             Err(_) => {
-                // If there is an error in receiving the response, inform the client
+                // If unable to connect to the upstream server, inform the client with a 502 Bad Gateway error
                 let response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
                 client_stream.write(response.as_bytes()).unwrap();
                 return;
             }
-        }
+        };
 
-        // Forward the response to the client 
-        // Try to write the response to the client and handle any errors
-        match client_stream.write_all(upstream_response.as_bytes()) {
-            Ok(_) => (),
-            Err(e) => {
-                eprintln!("Failed to write to stream: {}", e);
-                return;
+        // Begin looping to read requests from the client
+        loop {
+
+            // Read the request from the client and forward it to the upstream server using the request_controller function
+            request_controller(&mut client_stream, client_ip, &mut upstream_stream);
+
+            // Try to read the response from the upstream server into a string buffer (upstream_response) and handle any errors
+            // If there is an error in receiving the response, inform the client with a 502 Bad Gateway error and return
+            let mut upstream_response = String::new();
+            match upstream_stream.read_to_string(&mut upstream_response) {
+                Ok(_) => (),
+                Err(_) => {
+                    // If there is an error in receiving the response, inform the client
+                    let response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
+                    client_stream.write(response.as_bytes()).unwrap();
+                    return;
+                }
+            }
+
+            // Forward the response to the client 
+            // Try to write the response to the client and handle any errors
+            match client_stream.write_all(upstream_response.as_bytes()) {
+                Ok(_) => (),
+                Err(e) => {
+                    eprintln!("Failed to write to stream: {}", e);
+                    return;
+                }
+            }
+            
+            // Try to flush the stream
+            match client_stream.flush() {
+                Ok(_) => (),
+                Err(e) => {
+                    eprintln!("Failed to flush stream: {}", e);
+                    return;
+                }
             }
         }
-        
-        // Try to flush the stream
-        match client_stream.flush() {
-            Ok(_) => (),
-            Err(e) => {
-                eprintln!("Failed to flush stream: {}", e);
-                return;
-            }
-        }
+    }    // Si aucune connexion réussie n'a été établie, renvoyer une erreur 502 au client
+    let response = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
+    if let Err(e) = client_stream.write(response.as_bytes()) {
+        eprintln!("Failed to write to stream: {}", e);
     }
+
 }
 
 fn main() {
