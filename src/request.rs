@@ -238,7 +238,7 @@ pub fn request_controller(client_stream: &mut TcpStream, client_ip: &str, upstre
 
 }
 
-fn read_client_request(client_stream: &mut TcpStream) -> Result<httparse::Request, Error>{
+fn read_client_request(client_stream: &mut TcpStream) -> Result<Request<Vec<u8>>, Error>{
     let mut buffer = [0; 1024];
     let bytes_read = match client_stream.read(&mut buffer) {
         Ok(bytes) => bytes,
@@ -276,14 +276,8 @@ fn read_client_request(client_stream: &mut TcpStream) -> Result<httparse::Reques
         }
     }
 
-    return Ok(req)
-
-}
-
-fn client_request_builder (client_ip: &str, req: &httparse::Request) -> Result<Request<Vec<u8>>, Error>{
-
     // build parsed request with method, uri and version
-    let mut parsed_request = Request::builder()
+    let mut parsed_request = http::Request::builder()
         .method(req.method.unwrap())
         .uri(req.path.unwrap())
         .version(http::Version::HTTP_11);
@@ -292,6 +286,26 @@ fn client_request_builder (client_ip: &str, req: &httparse::Request) -> Result<R
     for header in req.headers {
         parsed_request = parsed_request.header(header.name, header.value);
     }
+
+    // build parsed request with body and unwrap it
+    let parsed_request = parsed_request.body(Vec::<u8>::new()).unwrap();
+
+    return Ok(parsed_request)
+}
+
+fn client_request_builder (client_ip: &str, req: &Request<Vec<u8>>) -> Result<Request<Vec<u8>>, Error>{
+
+    // build parsed request with method, uri and version
+    let mut parsed_request = Request::builder()
+        .method(req.method())
+        .uri(req.uri())
+        .version(http::Version::HTTP_11);
+
+    // add headers to parsed request
+    for header in req.headers() {
+        parsed_request = parsed_request.header(header.0, header.1);
+    }
+    
 
     parsed_request = parsed_request.header("X-Forwarded-For", client_ip);
 
