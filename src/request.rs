@@ -11,6 +11,8 @@ pub enum Error {
     /// The request is partial, and we could stop parsing it. The path
     /// is not found in the router
     PartialRequest,
+    /// Encountered an I/O error when reading/writing a TcpStream
+    ConnectionError,
 }
 
 /// This function serializes a request to bytes and writes those bytes to the provided stream.
@@ -38,13 +40,18 @@ pub fn format_request_line(request: &Request<Vec<u8>>) -> String {
 
 //////////////////////////////////////////////////
 
-pub fn request_controller(client_stream: &mut TcpStream, client_ip: &str, upstream_stream: &mut TcpStream) {
+pub fn request_controller(client_stream: &mut TcpStream, client_ip: &str, upstream_stream: &mut TcpStream) -> Result<(), Error>{
 
     let req= match read_client_request(client_stream){
         Ok(req) => req,
+        Err(Error::ClientClosedConnection) => {
+            log::info!("Client closed the connection");
+        //     return err 
+            return Err(Error::ClientClosedConnection);
+        },
         Err(e) => {
             log::error!("Error reading client request: {:?}", e);
-            return;
+            return Err(e)
         }
     };
 
@@ -52,18 +59,18 @@ pub fn request_controller(client_stream: &mut TcpStream, client_ip: &str, upstre
         Ok(parsed_request) => parsed_request,
         Err(e) => {
             log::error!("Error building client request: {:?}", e);
-            return;
+            return Err(e)
         }
     };
 
     // transform request into bytes and write to upstream stream
     if let Err(error) = write_to_stream(&parsed_request, upstream_stream){
         log::error!("Failed to send request to upstream server: {}", error);
-        return;
+        return Err(Error::ConnectionError);
     };
     log::debug!("Request sent to upstream server");
-
-
+    
+    Ok(())
 }
 
 fn read_client_request(client_stream: &mut TcpStream) -> Result<Request<Vec<u8>>, Error>{
@@ -81,8 +88,11 @@ fn read_client_request(client_stream: &mut TcpStream) -> Result<Request<Vec<u8>>
     // If no bytes are read, the client closed the connection
     if bytes_read == 0 {
         log::info!("Client closed the connection");
-        return Err(Error::ClientClosedConnection).expect("Client closed the connection. EXPECTED");
-    }
+        // return Err(Error::ClientClosedConnection).expect("Client closed the connection. EXPECTED");
+    //     return and expect are not compatible
+    //     do something if the program panics
+        return Err(Error::ClientClosedConnection);
+    } 
 
     // read the request from the client
     let mut headers = [httparse::EMPTY_HEADER; 16];

@@ -108,7 +108,23 @@ fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
     loop {
 
         // Read the request from the client and forward it to the upstream server using the request_controller function
-        request_controller(&mut client_stream, client_ip, &mut upstream_stream);
+        match request_controller(&mut client_stream, client_ip, &mut upstream_stream){
+            Ok(_) => (),
+            Err(request::Error::ClientClosedConnection) => {
+                eprintln!("Client closed the connection");
+                return;
+            }
+            Err(request::Error::ConnectionError) => {
+                eprintln!("Error reading request from client");
+                return;
+            }
+            Err(_) => {
+                // If there is an error in reading the request, inform the client with a 400 Bad Request error and return
+                let response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+                client_stream.write(response.as_bytes()).unwrap();
+                return;
+            }
+        };
 
         // Try to read the response from the upstream server into a string buffer (upstream_response) and handle any errors
         // If there is an error in receiving the response, inform the client with a 502 Bad Gateway error and return
