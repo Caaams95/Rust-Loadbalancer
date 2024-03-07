@@ -52,8 +52,9 @@ fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
     let upstream_address = state.upstream_addresses.choose(&mut rng).unwrap();
 
     // get the client's IP address
-    let client_ip = client_stream.peer_addr().unwrap().to_string().as_str();
-
+    // let client_ip = client_stream.peer_addr().unwrap().to_string().as_str();
+    let binding = client_stream.peer_addr().unwrap().to_string();
+    let client_ip = binding.as_str();
 
     // Connect to the selected upstream server
     let mut upstream_stream = match TcpStream::connect(upstream_address) {

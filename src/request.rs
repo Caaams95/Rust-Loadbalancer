@@ -258,7 +258,9 @@ fn read_client_request(client_stream: &mut TcpStream) -> Result<httparse::Reques
 
     // read the request from the client
     let mut headers = [httparse::EMPTY_HEADER; 16];
-    let mut req = httparse::Request::new(&mut headers);
+
+    let mut req = httparse::Request::new(&mut headers as &mut [httparse::Header]);
+
     let res = req.parse(&buffer).unwrap();
 
     // if the request is partial, we could stop parsing
@@ -274,9 +276,7 @@ fn read_client_request(client_stream: &mut TcpStream) -> Result<httparse::Reques
         }
     }
 
-    Ok(req)
-
-
+    return Ok(req)
 
 }
 
