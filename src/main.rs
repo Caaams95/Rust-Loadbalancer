@@ -8,6 +8,10 @@ use std::io::{Read, Write};
 use rand::seq::SliceRandom;
 use crate::request::{request_controller};
 
+#[allow(unused)]
+use rand::{Rng, SeedableRng, distributions};
+use std::{thread};
+
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -43,6 +47,17 @@ struct ProxyState {
     upstream_addresses: Vec<String>,
 }
 
+impl Clone for ProxyState {
+    fn clone(&self) -> Self {
+        Self {
+            active_health_check_interval: self.active_health_check_interval,
+            active_health_check_path: self.active_health_check_path.clone(),
+            rate_limit_window_size: self.rate_limit_window_size.clone(),
+            max_requests_per_window: self.max_requests_per_window.clone(),
+            upstream_addresses: self.upstream_addresses.clone(),
+        }
+    }
+}
 
 fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
     // Select a random upstream server
@@ -135,12 +150,24 @@ fn main() {
     };
     
 
-    for stream in listener.incoming() {
-        println!("New connection: {:?}", stream);
-        if let Ok(stream) = stream {
-            // Handle the connection!
-            handle_connection(stream, &state);
-        }
+    
+    let mut threads = Vec::new();
+    for _ in 0..num_cpus::get() {
+        let listener_ref = listener.try_clone().unwrap();
+        let state_ref = state.clone();
+        threads.push(thread::spawn(move || {
+            for stream in listener_ref.incoming() {
+                println!("New connection: {:?}", stream);
+                if let Ok(stream) = stream {
+                    // Handle the connection!
+                    handle_connection(stream, &state_ref);
+                }
+            }
+        }));
+    }
+
+    for handle in threads {
+        handle.join().expect("Panic occurred in thread!");
     }
      
 
