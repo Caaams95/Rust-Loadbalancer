@@ -1,6 +1,8 @@
 use std::cmp::min;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use http::Request;
+use crate::request;
 
 const MAX_HEADERS_SIZE: usize = 8000;
 const MAX_BODY_SIZE: usize = 10000000;
@@ -11,8 +13,8 @@ pub enum Error {
     /// Client hung up before sending a complete request. IncompleteRequest contains the number of
     /// bytes that were successfully read before the client hung up
     IncompleteRequest(usize),
-    /// Client sent an invalid HTTP request. httparse::Error contains more details
-    MalformedRequest(httparse::Error),
+    /// Client sent an invalid HTTP request.
+    MalformedRequest,
     /// The Content-Length header is present, but does not contain a valid numeric value
     InvalidContentLength,
     /// The Content-Length header does not match the size of the request body that was sent
@@ -21,6 +23,8 @@ pub enum Error {
     RequestBodyTooLarge,
     /// Encountered an I/O error when reading/writing a TcpStream
     ConnectionError(std::io::Error),
+    /// Client closed the connection
+    ClientClosedConnection,
 }
 
 /// Extracts the Content-Length header value from the provided request. Returns Ok(Some(usize)) if
@@ -70,25 +74,25 @@ pub fn extend_header_value(request: &mut http::Request<Vec<u8>>, header_name: &'
 /// * If there is data in the buffer that is definitely not a valid HTTP request, returns Err(Error)
 ///
 /// You won't need to touch this function.
-fn parse_request(buffer: &[u8]) -> Result<Option<(http::Request<Vec<u8>>, usize)>, Error> {
-    let mut headers = [httparse::EMPTY_HEADER; MAX_NUM_HEADERS];
-    let mut req = httparse::Request::new(&mut headers);
-    let res = req.parse(buffer).or_else(|err| Err(Error::MalformedRequest(err)))?;
-
-    if let httparse::Status::Complete(len) = res {
-        let mut request = http::Request::builder()
-            .method(req.method.unwrap())
-            .uri(req.path.unwrap())
-            .version(http::Version::HTTP_11);
-        for header in req.headers {
-            request = request.header(header.name, header.value);
-        }
-        let request = request.body(Vec::new()).unwrap();
-        Ok(Some((request, len)))
-    } else {
-        Ok(None)
-    }
-}
+// fn parse_request(buffer: &[u8]) -> Result<Option<(http::Request<Vec<u8>>, usize)>, Error> {
+//     let mut headers = [httparse::EMPTY_HEADER; MAX_NUM_HEADERS];
+//     let mut req = httparse::Request::new(&mut headers);
+//     let res = req.parse(buffer).or_else(|err| Err(Error::MalformedRequest(err)))?;
+//
+//     if let httparse::Status::Complete(len) = res {
+//         let mut request = http::Request::builder()
+//             .method(req.method.unwrap())
+//             .uri(req.path.unwrap())
+//             .version(http::Version::HTTP_11);
+//         for header in req.headers {
+//             request = request.header(header.name, header.value);
+//         }
+//         let request = request.body(Vec::new()).unwrap();
+//         Ok(Some((request, len)))
+//     } else {
+//         Ok(None)
+//     }
+// }
 
 /// Reads an HTTP request from the provided stream, waiting until a complete set of headers is sent.
 /// This function only reads the request line and headers; the read_body function can subsequently
@@ -97,36 +101,36 @@ fn parse_request(buffer: &[u8]) -> Result<Option<(http::Request<Vec<u8>>, usize)
 /// Returns Ok(http::Request) if a valid request is received, or Error if not.
 ///
 /// You will need to modify this function in Milestone 2.
-fn read_headers(stream: &mut TcpStream) -> Result<http::Request<Vec<u8>>, Error> {
-    // Try reading the headers from the request. We may not receive all the headers in one shot
-    // (e.g. we might receive the first few bytes of a request, and then the rest follows later).
-    // Try parsing repeatedly until we read a valid HTTP request
-    let mut request_buffer = [0_u8; MAX_HEADERS_SIZE];
-    let mut bytes_read = 0;
-    loop {
-        // Read bytes from the connection into the buffer, starting at position bytes_read
-        let new_bytes = stream
-            .read(&mut request_buffer[bytes_read..])
-            .or_else(|err| Err(Error::ConnectionError(err)))?;
-        if new_bytes == 0 {
-            // We didn't manage to read a complete request
-            return Err(Error::IncompleteRequest(bytes_read));
-        }
-        bytes_read += new_bytes;
-
-        // See if we've read a valid request so far
-        if let Some((mut request, headers_len)) = parse_request(&request_buffer[..bytes_read])? {
-            // We've read a complete set of headers. However, if this was a POST request, a request
-            // body might have been included as well, and we might have read part of the body out of
-            // the stream into header_buffer. We need to add those bytes to the Request body so that
-            // we don't lose them
-            request
-                .body_mut()
-                .extend_from_slice(&request_buffer[headers_len..bytes_read]);
-            return Ok(request);
-        }
-    }
-}
+// fn read_headers(stream: &mut TcpStream) -> Result<http::Request<Vec<u8>>, Error> {
+//     // Try reading the headers from the request. We may not receive all the headers in one shot
+//     // (e.g. we might receive the first few bytes of a request, and then the rest follows later).
+//     // Try parsing repeatedly until we read a valid HTTP request
+//     let mut request_buffer = [0_u8; MAX_HEADERS_SIZE];
+//     let mut bytes_read = 0;
+//     loop {
+//         // Read bytes from the connection into the buffer, starting at position bytes_read
+//         let new_bytes = stream
+//             .read(&mut request_buffer[bytes_read..])
+//             .or_else(|err| Err(Error::ConnectionError(err)))?;
+//         if new_bytes == 0 {
+//             // We didn't manage to read a complete request
+//             return Err(Error::IncompleteRequest(bytes_read));
+//         }
+//         bytes_read += new_bytes;
+//
+//         // See if we've read a valid request so far
+//         if let Some((mut request, headers_len)) = parse_request(&request_buffer[..bytes_read])? {
+//             // We've read a complete set of headers. However, if this was a POST request, a request
+//             // body might have been included as well, and we might have read part of the body out of
+//             // the stream into header_buffer. We need to add those bytes to the Request body so that
+//             // we don't lose them
+//             request
+//                 .body_mut()
+//                 .extend_from_slice(&request_buffer[headers_len..bytes_read]);
+//             return Ok(request);
+//         }
+//     }
+// }
 
 /// This function reads the body for a request from the stream. The client only sends a body if the
 /// Content-Length header is present; this function reads that number of bytes from the stream. It
@@ -156,14 +160,6 @@ fn read_body(
             return Err(Error::ContentLengthMismatch);
         }
 
-        // Make sure the client didn't send us *too many* bytes
-        if request.body().len() + bytes_read > content_length {
-            log::debug!(
-                "Client sent more bytes than we expected based on the given content length!"
-            );
-            return Err(Error::ContentLengthMismatch);
-        }
-
         // Store the received bytes in the request body
         request.body_mut().extend_from_slice(&buffer[..bytes_read]);
     }
@@ -174,27 +170,25 @@ fn read_body(
 /// closes the connection prematurely or sends an invalid request.
 ///
 /// You will need to modify this function in Milestone 2.
-pub fn read_from_stream(stream: &mut TcpStream) -> Result<http::Request<Vec<u8>>, Error> {
-    // Read headers
-    let mut request = read_headers(stream)?;
-    // Read body if the client supplied the Content-Length header (which it does for POST requests)
-    if let Some(content_length) = get_content_length(&request)? {
-        if content_length > MAX_BODY_SIZE {
-            return Err(Error::RequestBodyTooLarge);
-        } else {
-            read_body(stream, &mut request, content_length)?;
-        }
-    }
-    Ok(request)
-}
+// pub fn read_from_stream(stream: &mut TcpStream) -> Result<http::Request<Vec<u8>>, Error> {
+//     // Read headers
+//     let mut request = read_headers(stream)?;
+//     // Read body if the client supplied the Content-Length header (which it does for POST requests)
+//     if let Some(content_length) = get_content_length(&request)? {
+//         if content_length > MAX_BODY_SIZE {
+//             return Err(Error::RequestBodyTooLarge);
+//         } else {
+//             read_body(stream, &mut request, content_length)?;
+//         }
+//     }
+//     println!("THE REQUEST {:?}", request);
+//     Ok(request)
+// }
 
 /// This function serializes a request to bytes and writes those bytes to the provided stream.
 ///
 /// You will need to modify this function in Milestone 2.
-pub fn write_to_stream(
-    request: &http::Request<Vec<u8>>,
-    stream: &mut TcpStream,
-) -> Result<(), std::io::Error> {
+pub fn write_to_stream(request: &http::Request<Vec<u8>>,stream: &mut TcpStream) -> Result<(), std::io::Error> {
     stream.write(&format_request_line(request).into_bytes())?;
     stream.write(&['\r' as u8, '\n' as u8])?; // \r\n
     for (header_name, header_value) in request.headers() {
@@ -211,4 +205,102 @@ pub fn write_to_stream(
 
 pub fn format_request_line(request: &http::Request<Vec<u8>>) -> String {
     format!("{} {} {:?}", request.method(), request.uri(), request.version())
+}
+
+
+//////////////////////////////////////////////////
+
+pub fn request_controller(client_stream: &mut TcpStream, client_ip: &str, upstream_stream: &mut TcpStream) {
+
+    let req= match read_client_request(client_stream){
+        Ok(req) => req,
+        Err(e) => {
+            log::error!("Error reading client request: {:?}", e);
+            return;
+        }
+    };
+
+    let parsed_request = match client_request_builder(client_ip, &req){
+        Ok(parsed_request) => parsed_request,
+        Err(e) => {
+            log::error!("Error building client request: {:?}", e);
+            return;
+        }
+    };
+
+    // transform request into bytes and write to upstream stream
+    if let Err(error) = write_to_stream(&parsed_request, upstream_stream){
+        log::error!("Failed to send request to upstream server: {}", error);
+        return;
+    };
+    log::debug!("Request sent to upstream server");
+
+
+}
+
+fn read_client_request(client_stream: &mut TcpStream) -> Result<httparse::Request, Error>{
+    let mut buffer = [0; 1024];
+    let bytes_read = match client_stream.read(&mut buffer) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            // Error handling in case the client sends a malformed request
+            let response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+            client_stream.write(response.as_bytes()).unwrap();
+            return Err(Error::MalformedRequest);
+        }
+    };
+
+    // If no bytes are read, the client closed the connection
+    if bytes_read == 0 {
+        log::info!("Client closed the connection");
+        return Err(Error::ClientClosedConnection).expect("Client closed the connection.");
+    }
+
+    // read the request from the client
+    let mut headers = [httparse::EMPTY_HEADER; 16];
+    let mut req = httparse::Request::new(&mut headers);
+    let res = req.parse(&buffer).unwrap();
+
+    // if the request is partial, we could stop parsing
+    if res.is_partial() {
+        match req.path {
+            Some(ref path) => {
+                // check router for path.
+                // /404 doesn't exist? we could stop parsing
+            },
+            None => {
+                // we could stop parsing
+            }
+        }
+    }
+
+    Ok(req)
+
+
+
+}
+
+fn client_request_builder (client_ip: &str, req: &httparse::Request) -> Result<Request<Vec<u8>>, Error>{
+
+    // build parsed request with method, uri and version
+    let mut parsed_request = Request::builder()
+        .method(req.method.unwrap())
+        .uri(req.path.unwrap())
+        .version(http::Version::HTTP_11);
+
+    // add headers to parsed request
+    for header in req.headers {
+        parsed_request = parsed_request.header(header.name, header.value);
+    }
+
+    parsed_request = parsed_request.header("X-Forwarded-For", client_ip);
+
+    // build parsed request with body and unwrap it
+    let parsed_request = parsed_request.body(Vec::<u8>::new()).unwrap();
+
+    println!("\nParsed Request: {:?}", parsed_request);
+    log::info!("\nParsed Request: {:?}", parsed_request);
+
+    // return parsed request
+    Ok(parsed_request)
 }

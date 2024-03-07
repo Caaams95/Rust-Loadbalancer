@@ -8,7 +8,7 @@ use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write};
 use http::Request;
 use rand::seq::SliceRandom;
-use crate::request::{Error, format_request_line};
+use crate::request::{Error, format_request_line, request_controller};
 
 
 /// Simple program to greet a person
@@ -52,7 +52,7 @@ fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
     let upstream_address = state.upstream_addresses.choose(&mut rng).unwrap();
 
     // get the client's IP address
-    let client_ip = client_stream.peer_addr().unwrap().to_string();
+    let client_ip = client_stream.peer_addr().unwrap().to_string().as_str();
 
 
     // Connect to the selected upstream server
@@ -70,64 +70,68 @@ fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {
     // Begin looping to read requests from the client
     loop {
 
+        request_controller(&mut client_stream, client_ip, &mut upstream_stream);
 
-        let mut buffer = [0; 1024];
-        let bytes_read = match client_stream.read(&mut buffer) {
-            Ok(bytes) => bytes,
-            Err(_) => {
-                // Error handling in case the client sends a malformed request
-                let response = "HTTP/1.1 400 Bad Request\r\n\r\n";
-                client_stream.write(response.as_bytes()).unwrap();
-                return;
-            }
-        };
+        //
+        // let mut buffer = [0; 1024];
+        // let bytes_read = match client_stream.read(&mut buffer) {
+        //     Ok(bytes) => bytes,
+        //     Err(_) => {
+        //         // Error handling in case the client sends a malformed request
+        //         let response = "HTTP/1.1 400 Bad Request\r\n\r\n";
+        //         client_stream.write(response.as_bytes()).unwrap();
+        //         return;
+        //     }
+        // };
+        //
+        // // If no bytes are read, the client closed the connection
+        // if bytes_read == 0 {
+        //     log::info!("Client closed the connection");
+        //     return;
+        // }
+        //
+        //
+        // // read the request from the client
+        // let mut headers = [httparse::EMPTY_HEADER; 16];
+        // let mut req = httparse::Request::new(&mut headers);
+        // let res = req.parse(&buffer).unwrap();
+        //
+        // // if the request is partial, we could stop parsing
+        // if res.is_partial() {
+        //     match req.path {
+        //         Some(ref path) => {
+        //             // check router for path.
+        //             // /404 doesn't exist? we could stop parsing
+        //         },
+        //         None => {
+        //             // we could stop parsing
+        //         }
+        //     }
+        // }
+        //
+        // // build parsed request with method, uri and version
+        // let mut parsed_request = Request::builder()
+        //     .method(req.method.unwrap())
+        //     .uri(req.path.unwrap())
+        //     .version(http::Version::HTTP_11);
+        //
+        // // add headers to parsed request
+        // for header in req.headers {
+        //     parsed_request = parsed_request.header(header.name, header.value);
+        // }
+        //
+        // parsed_request = parsed_request.header("X-Forwarded-For", client_ip.clone());
+        //
+        // // build parsed request with body and unwrap it
+        // let parsed_request = parsed_request.body(Vec::<u8>::new()).unwrap();
+        //
+        // let mut request = parsed_request.clone();
+        //
+        // println!("\n\nParsed Request: {:?}", parsed_request);
+        //
+        // // transform request into bytes and write to upstream stream
+        // request::write_to_stream(&request, &mut upstream_stream).expect("Failed to send request to upstream server");
 
-        // If no bytes are read, the client closed the connection
-        if bytes_read == 0 {
-            log::info!("Client closed the connection");
-            return;
-        }
-
-        // read the request from the client
-        // let mut request = String::from_utf8_lossy(&buffer[..bytes_read]);
-
-        let mut headers = [httparse::EMPTY_HEADER; 16];
-        let mut req = httparse::Request::new(&mut headers);
-        let res = req.parse(&buffer).unwrap();
-        if res.is_partial() {
-            match req.path {
-                Some(ref path) => {
-                    // check router for path.
-                    // /404 doesn't exist? we could stop parsing
-                },
-                None => {
-                    // must read more and parse again
-                }
-            }
-        }
-
-        // build parsed request with method, uri and version
-        let mut parsed_request = Request::builder()
-            .method(req.method.unwrap())
-            .uri(req.path.unwrap())
-            .version(http::Version::HTTP_11);
-
-        // add headers to parsed request
-        for header in req.headers {
-            parsed_request = parsed_request.header(header.name, header.value);
-        }
-
-        parsed_request = parsed_request.header("X-Forwarded-For", client_ip.clone());
-
-        // build parsed request with body and unwrap it
-        let parsed_request = parsed_request.body(Vec::<u8>::new()).unwrap();
-
-        let mut request = parsed_request.clone();
-
-        println!("\n\nParsed Request: {:?}", parsed_request);
-
-        // transform request into bytes and write to upstream stream
-        request::write_to_stream(&request, &mut upstream_stream).expect("Failed to send request to upstream server");
 
 
         // Try to read the response from the upstream server
