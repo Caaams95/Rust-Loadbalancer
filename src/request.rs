@@ -16,7 +16,7 @@ pub enum Error {
 /// This function serializes a request to bytes and writes those bytes to the provided stream.
 ///
 /// You will need to modify this function in Milestone 2.
-fn write_to_stream(request: &http::Request<Vec<u8>>,stream: &mut TcpStream) -> Result<(), std::io::Error> {
+fn write_to_stream(request: &Request<Vec<u8>>,stream: &mut TcpStream) -> Result<(), std::io::Error> {
     stream.write(&format_request_line(request).into_bytes())?;
     stream.write(&['\r' as u8, '\n' as u8])?; // \r\n
     for (header_name, header_value) in request.headers() {
@@ -31,7 +31,7 @@ fn write_to_stream(request: &http::Request<Vec<u8>>,stream: &mut TcpStream) -> R
     Ok(())
 }
 
-pub fn format_request_line(request: &http::Request<Vec<u8>>) -> String {
+pub fn format_request_line(request: &Request<Vec<u8>>) -> String {
     format!("{} {} {:?}", request.method(), request.uri(), request.version())
 }
 
