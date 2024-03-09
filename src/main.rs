@@ -1,4 +1,6 @@
 mod request;
+mod http_health_checks;
+mod test;
 
 // use std::env::Args;
 use clap::{arg, Parser};
@@ -19,10 +21,15 @@ struct CmdOptions {
 
     #[arg(short, long, long_help="Bind to this address", default_value="0.0.0.0:8080")]
     bind: String,
-
-    /// Number of times to greet
+    
+    /// Interval between each health check in seconds Default is 1 second
     #[arg(short, long, default_value_t = 1)]
-    count: u8,
+    interval: u64,
+    
+    /// The path to use for active health checks
+    /// Default is /
+    #[arg(short, long, default_value = "/")]
+    path: String,
 }
 
 
@@ -34,12 +41,12 @@ struct ProxyState {
     /// Where we should send requests when doing active health checks (Milestone 2)
     #[allow(dead_code)]
     active_health_check_path: String,
-    /// How big the rate limiting window should be, default is 1 minute (Milestone 3)
-    #[allow(dead_code)]
-    rate_limit_window_size: u64,
-    /// Maximum number of requests an individual IP can make in a window (Milestone 3)
-    #[allow(dead_code)]
-    max_requests_per_window: u64,
+    // /// How big the rate limiting window should be, default is 1 minute (Milestone 3)
+    // #[allow(dead_code)]
+    // rate_limit_window_size: u64,
+    // /// Maximum number of requests an individual IP can make in a window (Milestone 3)
+    // #[allow(dead_code)]
+    // max_requests_per_window: u64,
     /// Addresses of servers that we are proxying to
     upstream_addresses: Vec<String>,
 }
@@ -73,7 +80,8 @@ fn connect_to_upstream_server(mut upstream_address_list: Vec<String>) -> Result<
 fn handle_connection(mut client_stream: TcpStream, state: &ProxyState) {    
     
     let mut upstream_address_list = state.upstream_addresses.clone();
-    
+
+    // it checked and do some health check
     let mut upstream_stream = match connect_to_upstream_server(upstream_address_list.clone()) {
         Ok(stream) => stream,
         Err(_) => {
@@ -182,14 +190,12 @@ fn main() {
 
     // Initialize the proxy state
     let state = ProxyState {
-        active_health_check_interval: 0, // Initialize with appropriate values
+        active_health_check_interval: args.interval, // Initialize with appropriate values
         active_health_check_path: String::new(), // Initialize with appropriate values
-        rate_limit_window_size: 0, // Initialize with appropriate values
-        max_requests_per_window: 0, // Initialize with appropriate values
         upstream_addresses: args.upstream, // Example addresses, replace with your logic
     };
     
-    println!("state: {:?}", state);
+    println!("{:?}", state);
     
 
     for stream in listener.incoming() {
