@@ -1,6 +1,5 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use tokio::time::{sleep, Duration};
 
 /// This function sends a simple GET request to the upstream server to check if it's healthy
 /// It takes a String containing the upstream server IP and return a Result containing a String or an error

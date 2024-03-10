@@ -1,6 +1,8 @@
 mod request;
 mod http_health_checks;
-mod test;
+
+mod active_health_check_test ;
+
 
 
 // use std::env::Args;
@@ -9,7 +11,7 @@ use log::{error};
 // Import the `error` and `info` macros from the `log` crate
 use std::net::{TcpListener, TcpStream};
 use std::io::{Read, Write};
-use std::path::PathBuf;
+
 use rand::seq::SliceRandom;
 use crate::request::{request_controller};
 use std::sync::{Arc};
@@ -83,8 +85,8 @@ fn connect_to_upstream_server(mut upstream_address_list: Vec<String>) -> Result<
 }
 
 async fn handle_connection(mut client_stream: TcpStream, shared_state: Arc<Mutex<ProxyState>>) {
-    let mut state = shared_state.lock().await;
-    let mut upstream_address_list = state.active_upstream_addresses.clone();
+    let state = shared_state.lock().await;
+    let upstream_address_list = state.active_upstream_addresses.clone();
 
     println!("active_upstream_addresses: {:?}", state.active_upstream_addresses);
 

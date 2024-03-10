@@ -25,9 +25,6 @@ pub fn basic_http_health_check(upstream_ip : String, path : String ) -> Result< 
             Err(std::io::Error::new(std::io::ErrorKind::Other, upstream_address.to_string()))
         }
     }
-
-
-
 }
 
 /// Send a simple GET request to the upstream server to check if it's healthy
@@ -53,18 +50,20 @@ fn simple_get_request(stream: &mut TcpStream, path : String) -> Result<(), std::
 }
 
 #[test]
-fn main() {
-
-    // create Vec<String> upstream_addresses and initialize it with a single address 1.1.1.1
-    let mut upstream_addresses_list: Vec<String> = Vec::new();
-    upstream_addresses_list.push(String::from("1.1.1.1"));
-    
+fn test_active_health_check() {
 
     let status = basic_http_health_check("171.67.215.200:80".to_string(), "/".to_string())
     .map_or(-1, |_| 1);
 
-    println!("status: {:?}", status);
-
-
+    assert_eq!(status, 1);
 }
 
+
+#[test]
+fn test_inactive_health_check() {
+
+    let status = basic_http_health_check("1.1.1.1".to_string(), "/".to_string())
+    .map_or(-1, |_| 1);
+    
+    assert_eq!(status, -1);
+}
