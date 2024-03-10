@@ -1,11 +1,83 @@
+//! # HTTP Health Checks Module
+//!
+//! This module provides functions for performing HTTP health checks on upstream servers.
+//!
+//! ## Functions
+//!
+//! ### `basic_http_health_check`
+//!
+//! This function sends a simple GET request to the upstream server to check if it's healthy. It takes an upstream server IP and a path as parameters.
+//!
+//! - **Parameters:**
+//!   - `upstream_ip`: A String containing the upstream server IP.
+//!   - `path`: A String representing the path used for the health check.
+//!
+//! - **Returns:**
+//!   - `Ok(())`: If the health check is successful (200 OK response).
+//!   - `Err(std::io::Error)`: If the health check fails, containing details about the error and the upstream server IP.
+//!
+//! - **Example:**
+//!   ```rust
+//!   use crate::http_health_checks::basic_http_health_check;
+//!
+//!   match basic_http_health_check(String::from("127.0.0.1:8080"), String::from("/health")) {
+//!       Ok(_) => println!("Health check successful!"),
+//!       Err(e) => eprintln!("Health check failed: {}", e),
+//!   }
+//!   ```
+//!
+//! ### `simple_get_request`
+//!
+//! This private function sends a simple GET request to the upstream server to check if it's healthy. It is used internally by `basic_http_health_check`.
+//!
+//! - **Parameters:**
+//!   - `stream`: A mutable reference to a TcpStream.
+//!   - `path`: A String representing the path used for the health check.
+//!
+//! - **Returns:**
+//!   - `Ok(())`: If the health check is successful (200 OK response).
+//!   - `Err(std::io::Error)`: If the health check fails, containing details about the error.
+//!
+//! - **Example:**
+//!   ```rust
+//!   use crate::http_health_checks::simple_get_request;
+//!   use std::net::TcpStream;
+//!
+//!   let mut stream = TcpStream::connect("127.0.0.1:8080").unwrap();
+//!   match simple_get_request(&mut stream, String::from("/health")) {
+//!       Ok(_) => println!("Health check successful!"),
+//!       Err(e) => eprintln!("Health check failed: {}", e),
+//!   }
+//!   ```
+
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-/// This function sends a simple GET request to the upstream server to check if it's healthy
-/// It takes a String containing the upstream server IP and return a Result containing a String or an error
-/// The health check is successful if the response contains 200 OK
-/// If the health check is successful, the function returns a String containing the upstream server IP
-/// If the health check fails, the function returns an error containing the upstream server IP
+/// Performs a basic HTTP health check on the upstream server.
+///
+/// This function sends a simple GET request to the specified upstream server IP and path to check if it's healthy.
+/// The health check is considered successful if the response contains "200 OK."
+///
+/// # Arguments
+///
+/// * `upstream_ip` - A String containing the upstream server IP.
+/// * `path` - A String representing the path used for the health check.
+///
+/// # Returns
+///
+/// * `Ok(())` - If the health check is successful (200 OK response).
+/// * `Err(std::io::Error)` - If the health check fails, containing details about the error and the upstream server IP.
+///
+/// # Example
+///
+/// ```rust
+/// use crate::http_health_checks::basic_http_health_check;
+///
+/// match basic_http_health_check(String::from("127.0.0.1:8080"), String::from("/health")) {
+///     Ok(_) => println!("Health check successful!"),
+///     Err(e) => eprintln!("Health check failed: {}", e),
+/// }
+/// ``` 
 pub fn basic_http_health_check(upstream_ip : String, path : String) -> Result< (), std::io::Error> {
     let upstream_address = upstream_ip;
 
@@ -33,9 +105,33 @@ pub fn basic_http_health_check(upstream_ip : String, path : String) -> Result< (
     
 }
 
-/// Send a simple GET request to the upstream server to check if it's healthy
-/// It takes a mutable reference to a TcpStream and return a Result containing a unit type or an error
-/// The health check is successful if the response contains 200 OK
+
+/// Sends a simple GET request to the upstream server to check if it's healthy.
+///
+/// This private function is used internally by `basic_http_health_check`.
+///
+/// # Arguments
+///
+/// * `stream` - A mutable reference to a TcpStream.
+/// * `path` - A String representing the path used for the health check.
+///
+/// # Returns
+///
+/// * `Ok(())` - If the health check is successful (200 OK response).
+/// * `Err(std::io::Error)` - If the health check fails, containing details about the error.
+///
+/// # Example
+///
+/// ```rust
+/// use crate::http_health_checks::simple_get_request;
+/// use std::net::TcpStream;
+///
+/// let mut stream = TcpStream::connect("127.0.0.1:8080").unwrap();
+/// match simple_get_request(&mut stream, String::from("/health")) {
+///     Ok(_) => println!("Health check successful!"),
+///     Err(e) => eprintln!("Health check failed: {}", e),
+/// }
+/// ```
 fn simple_get_request(stream: &mut TcpStream, path : String) -> Result<(), std::io::Error> {
 
 

@@ -1,3 +1,52 @@
+//! # Asynchronous Proxy Server in Rust
+//!
+//! This module implements a simple asynchronous proxy server in Rust. The server listens for incoming TCP connections,
+//! proxies the requests to one of the specified upstream servers, and forwards the responses back to the client.
+//!
+//! ## Modules
+//!
+//! - `request`: Module for handling client requests.
+//! - `http_health_checks`: Module for performing HTTP-based health checks on upstream servers.
+//! - `test_active_health_check`: Module for testing active health check functionality.
+//! - `test_request`: Module for testing request handling functionality.
+//!
+//! ## Dependencies
+//!
+//! - `clap`: Command line argument parsing.
+//! - `log`: Logging macros.
+//! - `rand`: Random number generation for load balancing among upstream servers.
+//! - `tokio`: Asynchronous runtime.
+//!
+//! ## Usage
+//!
+//! To run the proxy server, use the following command:
+//!
+//! ```sh
+//! cargo run -- --upstream <upstream-server-1> --upstream <upstream-server-2> ... --bind <bind-address> --interval <health-check-interval> --path <health-check-path>
+//! ```
+//!
+//! ## Options
+//!
+//! - `--upstream`: Upstream server(s) to proxy to.
+//! - `--bind`: The address to bind the proxy server to.
+//! - `--interval`: Interval between each health check in seconds. Default is 5 seconds.
+//! - `--path`: The path to use for active health checks. Default value is "/".
+//!
+//! ## Structures
+//!
+//! - `CmdOptions`: Represents the command-line options for configuring the proxy server.
+//! - `ProxyState`: Represents the state of the proxy server, including active health check settings and upstream server addresses.
+//!
+//! ## Functions
+//!
+//! - `connect_to_upstream_server`: Attempts to connect to an upstream server.
+//! - `handle_connection`: Asynchronously handles incoming client connections, proxies requests, and forwards responses.
+//!
+//! ## Main Function
+//!
+//! The `main` function initializes the proxy server by parsing command line arguments, creating a listener for incoming connections,
+//! and starting asynchronous tasks for active health checks and connection handling.
+
 mod request;
 mod http_health_checks;
 
@@ -20,46 +69,103 @@ use tokio::time::{sleep, Duration};
 use crate::http_health_checks::basic_http_health_check;
 
 
-/// Simple program to greet a person
+
+/// Command line options for the proxy server.
+///
+/// This struct represents the command-line options that can be used to configure the proxy server.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct CmdOptions {
-    /// Name of the person to greet
+    /// Upstream server(s) to proxy to.
+    ///
+    /// This option specifies the addresses of the upstream servers that the proxy server will forward client requests to.
     #[arg(short, long, long_help = "Upstream server(s) to proxy to")]
     upstream: Vec<String>,
 
+    /// The address to bind the proxy server to.
+    ///
+    /// This option specifies the network address to which the proxy server will bind and listen for incoming connections.
     #[arg(short, long, long_help = "Bind to this address", default_value = "0.0.0.0:8080")]
     bind: String,
 
-    /// Interval between each health check in seconds Default is 5 second
+    /// Interval between each health check in seconds. Default is 5 seconds.
+    ///
+    /// This option specifies the time interval (in seconds) between each health check performed by the proxy server
+    /// to determine the availability of upstream servers
     #[arg(short, long, default_value_t = 5)]
     interval: u64,
 
-    /// The path to use for active health checks
-    /// Default is /
+    /// The path to use for active health checks.
+    ///
+    /// This option specifies the endpoint path used by the proxy server for active health checks on the upstream servers.
+    /// The proxy server sends health check requests to this path to determine the availability of the upstream servers.
+    /// Default value is "/".
     #[arg(short, long, default_value = "/")]
     path: String,
 }
 
-
+/// Represents the state of the proxy server.
 #[derive(Debug)]
 struct ProxyState {
-    /// How frequently we check whether upstream servers are alive (Milestone 2)
+    /// How frequently we check whether upstream servers are alive.
+    ///
+    /// This value determines the interval (in seconds) at which the proxy server performs active health checks
+    /// on the upstream servers to determine their availability.
     #[allow(dead_code)]
     active_health_check_interval: u64,
-    /// Where we should send requests when doing active health checks (Milestone 2)
+
+    /// The path used for active health checks.
+    ///
+    /// This is the endpoint path to which the proxy server sends health check requests to the upstream servers
+    /// to determine their availability.
     #[allow(dead_code)]
     active_health_check_path: String,
 
-    /// Addresses of servers that we are proxying to
+    /// Addresses of servers that the proxy server is proxying to.
+    ///
+    /// This vector contains the addresses of all the upstream servers that the proxy server forwards client requests to.
     upstream_addresses: Vec<String>,
 
-    /// List of all the active upstream servers (Milestone 2)
-    /// This list will be used to store the active upstream servers
+    /// List of all the active upstream servers.
+    ///
+    /// This list is used to store the addresses of the upstream servers that are currently deemed as active,
+    /// based on the results of the active health checks performed by the proxy server.
     active_upstream_addresses: Vec<String>,
 
 }
 
+
+/// Attempts to connect to an upstream server randomly selected from the provided list.
+///
+/// This function takes a list of upstream server addresses and randomly selects one to establish a TCP connection.
+/// If the connection attempt fails, it recursively retries with the remaining addresses until a successful connection is made
+/// or the list is exhausted. This helps in load balancing and handling failures gracefully.
+///
+/// # Arguments
+///
+/// - `upstream_address_list`: A mutable vector containing the addresses of upstream servers.
+///
+/// # Returns
+///
+/// - `Result<TcpStream, std::io::Error>`: A `Result` representing either a successfully established TCP stream or an error if all connection attempts fail.
+///
+/// # Example
+///
+/// ```rust
+/// use std::net::TcpStream;
+///
+/// let upstream_addresses = vec!["127.0.0.1:8081", "127.0.0.1:8082", "127.0.0.1:8083"];
+/// let result = connect_to_upstream_server(upstream_addresses);
+/// match result {
+///     Ok(stream) => {
+///         // Successfully connected to an upstream server
+///         // Use the 'stream' to communicate with the server
+///     }
+///     Err(error) => {
+///         eprintln!("Failed to connect to upstream server: {}", error);
+///     }
+/// }
+/// ```
 fn connect_to_upstream_server(mut upstream_address_list: Vec<String>) -> Result<TcpStream, std::io::Error> {
     let mut rng = rand::thread_rng();
     let upstream_address = upstream_address_list.choose(&mut rng).unwrap();
@@ -84,10 +190,28 @@ fn connect_to_upstream_server(mut upstream_address_list: Vec<String>) -> Result<
     }
 }
 
+/// Handles an incoming client connection asynchronously.
+///
+/// This async function is responsible for handling an incoming TCP client connection. It begins by attempting to establish a connection
+/// to one of the active upstream servers randomly selected based on health and load balancing considerations. If the connection to the
+/// upstream server is successful, it enters into a loop where it reads client requests, forwards them to the upstream server using the
+/// `request_controller` function, and sends back the received responses to the client.
+///
+/// If the connection to the upstream server fails or encounters errors during request handling, appropriate HTTP error responses are sent
+/// to the client to inform them of the issues.
+///
+/// # Arguments
+///
+/// - `client_stream`: A mutable reference to the TCP stream representing the client connection.
+/// - `shared_state`: An `Arc<Mutex<ProxyState>>` representing the shared state of the proxy server, including active upstream server addresses.
+///
+
 async fn handle_connection(mut client_stream: TcpStream, shared_state: Arc<Mutex<ProxyState>>) {
+    // Lock the shared state to access active upstream server addresses
     let state = shared_state.lock().await;
     let upstream_address_list = state.active_upstream_addresses.clone();
-
+    
+    // Print active upstream server addresses for debugging purposes
     println!("active_upstream_addresses: {:?}", state.active_upstream_addresses);
 
     // it checked and do some health check
@@ -102,7 +226,7 @@ async fn handle_connection(mut client_stream: TcpStream, shared_state: Arc<Mutex
         }
     };
 
-    // get the client's IP address - two var to prevent the borrow error in &str
+    // Get the client's IP address to include in request processing - two var to prevent the borrow error in &str
     let binding = client_stream.peer_addr().unwrap().to_string();
     let client_ip = binding.as_str();
 
@@ -162,6 +286,13 @@ async fn handle_connection(mut client_stream: TcpStream, shared_state: Arc<Mutex
     }
 }
 
+
+
+
+/// Main entry point for the proxy server.
+///
+/// This function parses command line arguments, initializes the proxy state, and starts two asynchronous tasks:
+/// one for active health checks and another for handling incoming connections.
 #[tokio::main]
 async fn main() {
     // Parse the command line arguments passed to this program

@@ -1,6 +1,26 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
+
+
+
+
+/// Performs a basic HTTP health check on an upstream server.
+///
+/// This function sends a simple GET request to the upstream server to check if it's healthy.
+/// The health check is successful if the response contains "200 OK."
+///
+/// # Arguments
+///
+/// * `upstream_ip` - A String containing the IP address and port of the upstream server.
+/// * `path` - A String representing the path for the GET request.
+///
+/// # Returns
+///
+/// * `Result<String, std::io::Error>` - If the health check is successful, returns Ok with the upstream address.
+///                                    If the health check fails, returns an Err with an I/O error containing the upstream address.
+
+
 pub fn basic_http_health_check(upstream_ip : String, path : String ) -> Result< String, std::io::Error> {
     let upstream_address = upstream_ip;
 
@@ -27,9 +47,21 @@ pub fn basic_http_health_check(upstream_ip : String, path : String ) -> Result< 
     }
 }
 
-/// Send a simple GET request to the upstream server to check if it's healthy
-/// It takes a mutable reference to a TcpStream and return a Result containing a unit type or an error
-/// The health check is successful if the response contains 200 OK
+
+/// Send a simple GET request to the upstream server to check if it's healthy.
+///
+/// This function takes a mutable reference to a TcpStream and returns a Result containing a unit type or an error.
+/// The health check is successful if the response contains "200 OK."
+///
+/// # Arguments
+///
+/// * `stream` - A mutable reference to a TcpStream connected to the upstream server.
+/// * `path` - A String representing the path for the GET request.
+///
+/// # Returns
+///
+/// * `Result<(), std::io::Error>` - If the health check is successful, returns Ok.
+///                                If the health check fails, returns an Err with an I/O error.
 fn simple_get_request(stream: &mut TcpStream, path : String) -> Result<(), std::io::Error> {
 
 

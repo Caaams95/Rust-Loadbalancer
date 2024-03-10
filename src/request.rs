@@ -2,6 +2,8 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use http::Request;
 
+/// Enum representing possible errors during request handling.
+
 #[derive(Debug)]
 pub enum Error {
     /// Client sent an invalid HTTP request.
@@ -15,9 +17,20 @@ pub enum Error {
     ConnectionError,
 }
 
-/// This function serializes a request to bytes and writes those bytes to the provided stream.
+/// Serializes a request to bytes and writes those bytes to the provided stream.
 ///
-/// You will need to modify this function in Milestone 2.
+/// This function serializes the given HTTP request to bytes and writes them to the provided TcpStream.
+/// It includes the request line, headers, and body.
+///
+/// # Arguments
+///
+/// * `request` - The HTTP request to be serialized and sent.
+/// * `stream` - The TcpStream to which the serialized request will be written.
+///
+/// # Returns
+///
+/// * `Ok(())` - If the serialization and writing process is successful.
+/// * `Err(std::io::Error)` - If there is an error during the serialization or writing process.
 fn write_to_stream(request: &Request<Vec<u8>>,stream: &mut TcpStream) -> Result<(), std::io::Error> {
     stream.write(&format_request_line(request).into_bytes())?;
     stream.write(&['\r' as u8, '\n' as u8])?; // \r\n
@@ -33,13 +46,40 @@ fn write_to_stream(request: &Request<Vec<u8>>,stream: &mut TcpStream) -> Result<
     Ok(())
 }
 
+
+/// Formats the request line of an HTTP request.
+///
+/// This function takes an HTTP request and returns a formatted string containing the request line,
+/// including the method, URI, and version.
+///
+/// # Arguments
+///
+/// * `request` - The HTTP request for which the request line will be formatted.
+///
+/// # Returns
+///
+/// * `String` - The formatted request line.
 pub fn format_request_line(request: &Request<Vec<u8>>) -> String {
     format!("{} {} {:?}", request.method(), request.uri(), request.version())
 }
 
 
-//////////////////////////////////////////////////
-
+/// Controls the flow of incoming requests and handles the communication with the upstream server.
+///
+/// This function reads an HTTP request from the client, processes it, and sends the parsed request to the upstream server.
+///
+/// # Arguments
+///
+/// * `client_stream` - A mutable reference to the TcpStream connected to the client.
+/// * `client_ip` - The IP address of the client.
+/// * `upstream_stream` - A mutable reference to the TcpStream connected to the upstream server.
+///
+/// # Returns
+///
+/// * `Ok(())` - If the handling process is successful.
+/// * `Err(Error)` - If there is an error during the handling process.
+/// 
+/// 
 pub fn request_controller(client_stream: &mut TcpStream, client_ip: &str, upstream_stream: &mut TcpStream) -> Result<(), Error>{
 
     let req= match read_client_request(client_stream){
@@ -73,6 +113,20 @@ pub fn request_controller(client_stream: &mut TcpStream, client_ip: &str, upstre
     Ok(())
 }
 
+
+/// Reads the client's HTTP request from the provided TcpStream.
+///
+/// This function attempts to read the client's HTTP request from the provided TcpStream.
+/// If successful, it returns the parsed HTTP request. If the client closes the connection or
+/// there is an error during the read operation, an appropriate error is returned.
+///
+/// # Arguments
+///
+/// * `client_stream` - A mutable reference to the TcpStream connected to the client.
+///
+/// # Returns
+///
+/// * `Result<Request<Vec<u8>>, Error>` - The result containing the parsed HTTP request or an error.
 fn read_client_request(client_stream: &mut TcpStream) -> Result<Request<Vec<u8>>, Error>{
     let mut buffer = [0; 1024];
     let bytes_read = match client_stream.read(&mut buffer) {
@@ -133,6 +187,22 @@ fn read_client_request(client_stream: &mut TcpStream) -> Result<Request<Vec<u8>>
 
     return Ok(parsed_request)
 }
+
+
+
+
+/// Builds a modified client request by adding the client's IP and returns the new request.
+///
+/// # Arguments
+///
+/// * `client_ip` - A string representing the client's IP address.
+/// * `req` - A reference to the original client request.
+///
+/// # Returns
+///
+/// * `Ok(Request<Vec<u8>>)` - If the modified client request is successfully created.
+/// * `Err(Error)` - If an error occurs during the building process.
+
 
 fn client_request_builder (client_ip: &str, req: &Request<Vec<u8>>) -> Result<Request<Vec<u8>>, Error>{
 
