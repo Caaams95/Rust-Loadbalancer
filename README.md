@@ -3,6 +3,10 @@
 This module implements a simple asynchronous proxy server in Rust. The server listens for incoming TCP connections,
 proxies the requests to one of the specified upstream servers, and forwards the responses back to the client.
 
+## Rustdoc
+
+- `cargo doc && cargo doc --open`:  To generate Rustdoc
+
 ## Modules
 
 - `request`: Module for handling client requests.
