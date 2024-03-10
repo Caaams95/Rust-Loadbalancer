@@ -1,3 +1,6 @@
+- `Author`: Camille LACOUTURE, Keissy BOD
+- `Class`: 4SI3
+
 # Asynchronous Proxy Server in Rust
 
 This module implements a simple asynchronous proxy server in Rust. The server listens for incoming TCP connections,
