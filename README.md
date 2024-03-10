@@ -5,7 +5,7 @@ proxies the requests to one of the specified upstream servers, and forwards the 
 
 ## Rustdoc
 
-- `cargo doc && cargo doc --open`:  To generate Rustdoc
+- `cargo doc && cargo doc --open`:  To generate Rustdoc.
 
 ## Modules
 
