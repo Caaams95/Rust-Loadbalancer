@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-pub fn basic_http_health_check(upstream_ip : String) -> Result< String, std::io::Error> {
+pub fn basic_http_health_check(upstream_ip : String, path : String ) -> Result< String, std::io::Error> {
     let upstream_address = upstream_ip;
 
     // send a simple GET request to the upstream server to check if it's healthy
@@ -15,7 +15,7 @@ pub fn basic_http_health_check(upstream_ip : String) -> Result< String, std::io:
 
 
     // send a simple GET request to the upstream server to check if it's healthy returning 200 OK
-    return match simple_get_request(&mut upstream_stream) {
+    return match simple_get_request(&mut upstream_stream, path) {
         Ok(_) => {
             //     return a simple Ok containing the upstream_address
             Ok(upstream_address.to_string())
@@ -33,11 +33,10 @@ pub fn basic_http_health_check(upstream_ip : String) -> Result< String, std::io:
 /// Send a simple GET request to the upstream server to check if it's healthy
 /// It takes a mutable reference to a TcpStream and return a Result containing a unit type or an error
 /// The health check is successful if the response contains 200 OK
-fn simple_get_request(stream: &mut TcpStream) -> Result<(), std::io::Error> {
+fn simple_get_request(stream: &mut TcpStream, path : String) -> Result<(), std::io::Error> {
 
 
-
-    let request = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    let request = format!("GET {} HTTP/1.1\r\nHost: localhost\r\n\r\n", path);
     stream.write(request.as_bytes())?;
 
     // check the http code
@@ -59,8 +58,9 @@ fn main() {
     // create Vec<String> upstream_addresses and initialize it with a single address 1.1.1.1
     let mut upstream_addresses_list: Vec<String> = Vec::new();
     upstream_addresses_list.push(String::from("1.1.1.1"));
+    
 
-    let status = basic_http_health_check("171.67.215.200:80".to_string())
+    let status = basic_http_health_check("171.67.215.200:80".to_string(), "/".to_string())
     .map_or(-1, |_| 1);
 
     println!("status: {:?}", status);
